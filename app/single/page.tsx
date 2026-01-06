@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import Card from '@/components/Card';
@@ -10,16 +10,41 @@ import { CardWeight } from '@/types/card';
 import { ArrowLeft } from 'lucide-react';
 import ParticleEffect from '@/components/ParticleEffect';
 import ShimmerEffect from '@/components/ShimmerEffect';
+import ShuffleAnimation from '@/components/ShuffleAnimation';
 
 export default function SingleCardPage() {
   const router = useRouter();
   const [card, setCard] = useState<CardWeight | null>(null);
   const [isFlipped, setIsFlipped] = useState(false);
   const [result, setResult] = useState<ReturnType<typeof interpretSingleCard> | null>(null);
+  const [isShuffling, setIsShuffling] = useState(true); // 初始狀態為洗牌中
+  const [pendingCard, setPendingCard] = useState<CardWeight | null>(null);
+
+  // 進入頁面時自動抽取卡牌並觸發洗牌動畫
+  useEffect(() => {
+    if (!card && !pendingCard) {
+      const newCard = drawRandomCard();
+      setPendingCard(newCard);
+    }
+  }, []);
+
+  const handleShuffleComplete = () => {
+    // 洗牌動畫完成後，顯示卡牌
+    if (pendingCard) {
+      setCard(pendingCard);
+      setPendingCard(null);
+      setIsFlipped(false);
+      setResult(null);
+    }
+    setIsShuffling(false);
+  };
 
   const handleDraw = () => {
+    // 再抽一張時，重新觸發洗牌動畫
     const newCard = drawRandomCard();
-    setCard(newCard);
+    setPendingCard(newCard);
+    setIsShuffling(true);
+    setCard(null);
     setIsFlipped(false);
     setResult(null);
   };
@@ -35,8 +60,13 @@ export default function SingleCardPage() {
 
   return (
     <div className="min-h-screen p-4 md:p-8 relative bg-paper">
+      {/* 洗牌動畫 */}
+      {isShuffling && (
+        <ShuffleAnimation onComplete={handleShuffleComplete} cardCount={10} />
+      )}
+
       {/* 背景粒子效果 */}
-      {!card && (
+      {!card && !isShuffling && (
         <div className="fixed inset-0 pointer-events-none z-0">
           <ParticleEffect count={20} color="rgba(45, 55, 72, 0.15)" />
         </div>
@@ -51,37 +81,7 @@ export default function SingleCardPage() {
       </button>
 
       <div className="max-w-4xl mx-auto relative z-10">
-        {!card ? (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="text-center"
-          >
-            <ShimmerEffect>
-              <h1 className="text-4xl font-bold text-ink-dark mb-8">單卡抽籤</h1>
-            </ShimmerEffect>
-            <p className="text-ink-medium mb-12 text-lg">從四類中隨機抽取一張卡牌</p>
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={handleDraw}
-              className="bg-gradient-to-br from-sky-start to-sky-end text-white px-8 py-4 rounded-card text-lg font-medium shadow-lg relative overflow-hidden"
-            >
-              <span className="relative z-10">開始抽卡</span>
-              <motion.div
-                className="absolute inset-0 bg-white/20"
-                animate={{
-                  x: ['-100%', '200%']
-                }}
-                transition={{
-                  duration: 2,
-                  repeat: Infinity,
-                  ease: 'linear'
-                }}
-              />
-            </motion.button>
-          </motion.div>
-        ) : (
+        {!isShuffling && card && (
           <div className="space-y-12">
             <div className="flex justify-center">
               <div className="w-[353px] md:w-[441px]" style={{ aspectRatio: '3/5.5' }}>
@@ -161,6 +161,14 @@ export default function SingleCardPage() {
                 返回首頁
               </motion.button>
             </div>
+          </div>
+        )}
+        
+        {/* 洗牌中或等待狀態時顯示標題 */}
+        {isShuffling && (
+          <div className="text-center">
+            <h1 className="text-4xl font-bold text-ink-dark mb-4">單卡抽籤</h1>
+            <p className="text-ink-medium text-lg">正在為您抽取卡牌...</p>
           </div>
         )}
       </div>

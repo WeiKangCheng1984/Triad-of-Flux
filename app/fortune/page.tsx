@@ -8,6 +8,7 @@ import { drawRandomCard } from '@/lib/cards';
 import { calculateFortune, generateFortuneText } from '@/lib/fortune';
 import { CardWeight, FortuneText } from '@/types/card';
 import { ArrowLeft } from 'lucide-react';
+import ShuffleAnimation from '@/components/ShuffleAnimation';
 
 const categories: CardWeight['category'][] = ['天', '地', '人', '變數'];
 const categoryNames = { 天: '天（節氣）', 地: '地（空間）', 人: '人（角色）', 變數: '變數（意外）' };
@@ -19,48 +20,55 @@ export default function FortunePage() {
   const [flippedCards, setFlippedCards] = useState<boolean[]>([false, false, false, false]);
   const [currentStep, setCurrentStep] = useState(0);
   const [fortuneResult, setFortuneResult] = useState<FortuneText | null>(null);
+  const [isShuffling, setIsShuffling] = useState(true); // 初始狀態為洗牌中
 
+  // 初始洗牌完成後，抽取四張卡牌
+  const handleShuffleComplete = () => {
+    // 同時抽取四張卡牌
+    const newCards: CardWeight[] = [
+      drawRandomCard('天'),
+      drawRandomCard('地'),
+      drawRandomCard('人'),
+      drawRandomCard('變數')
+    ];
+    setCards(newCards);
+    setIsShuffling(false);
+  };
+
+  // 點擊卡牌翻轉
   const handleCardClick = (index: number) => {
-    if (index !== currentStep || flippedCards[index] || cards[index]) {
+    if (index !== currentStep || flippedCards[index] || !cards[index] || isShuffling) {
       return;
     }
 
-    const category = categories[index];
-    const newCard = drawRandomCard(category);
-    const updatedCards = [...cards];
-    updatedCards[index] = newCard;
-    setCards(updatedCards);
+    // 直接翻轉卡牌
+    const newFlipped = [...flippedCards];
+    newFlipped[index] = true;
+    setFlippedCards(newFlipped);
 
-    setTimeout(() => {
-      setFlippedCards(prev => {
-        const newFlipped = [...prev];
-        newFlipped[index] = true;
-        return newFlipped;
-      });
-
-      if (index === 3) {
+    if (index === 3) {
+      // 第四張卡牌翻開後，進入計算階段
+      setTimeout(() => {
+        setPhase('calculating');
         setTimeout(() => {
-          setPhase('calculating');
-          setTimeout(() => {
-            const allCards = updatedCards as CardWeight[];
-            const calculation = calculateFortune(
-              allCards[0],
-              allCards[1],
-              allCards[2],
-              allCards[3]
-            );
-            const text = generateFortuneText(
-              [allCards[0], allCards[1], allCards[2], allCards[3]],
-              calculation
-            );
-            setFortuneResult(text);
-            setPhase('result');
-          }, 2000);
-        }, 1000);
-      } else {
-        setCurrentStep(index + 1);
-      }
-    }, 300);
+          const allCards = cards as CardWeight[];
+          const calculation = calculateFortune(
+            allCards[0],
+            allCards[1],
+            allCards[2],
+            allCards[3]
+          );
+          const text = generateFortuneText(
+            [allCards[0], allCards[1], allCards[2], allCards[3]],
+            calculation
+          );
+          setFortuneResult(text);
+          setPhase('result');
+        }, 2000);
+      }, 1000);
+    } else {
+      setCurrentStep(index + 1);
+    }
   };
 
   const handleReset = () => {
@@ -69,11 +77,17 @@ export default function FortunePage() {
     setFlippedCards([false, false, false, false]);
     setCurrentStep(0);
     setFortuneResult(null);
+    setIsShuffling(true); // 重新開始時觸發洗牌動畫
   };
 
   if (phase === 'drawing') {
     return (
       <div className="min-h-screen p-4 md:p-8 relative bg-paper">
+        {/* 洗牌動畫 */}
+        {isShuffling && (
+          <ShuffleAnimation onComplete={handleShuffleComplete} cardCount={8} />
+        )}
+
         <button
           onClick={() => router.push('/')}
           className="mb-6 flex items-center gap-2 text-ink-medium hover:text-ink-dark transition-colors"
@@ -96,7 +110,8 @@ export default function FortunePage() {
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-8 justify-items-center">
               {[0, 1, 2, 3].map((index) => {
-                const isClickable = index === currentStep && !flippedCards[index];
+                const isClickable = index === currentStep && !flippedCards[index] && !isShuffling;
+                const hasCard = cards[index] !== null;
                 
                 return (
                   <div key={index} className="flex flex-col items-center w-[198px] md:w-[221px]">
@@ -104,13 +119,14 @@ export default function FortunePage() {
                       <span className={`text-sm md:text-base font-medium ${
                         isClickable ? 'text-ink-dark' : 
                         flippedCards[index] ? 'text-ink-medium' : 
+                        hasCard ? 'text-ink-medium' :
                         'text-ink-light'
                       }`}>
                         {categoryNames[categories[index]]}
                       </span>
                       {isClickable && (
                         <span className="block text-ink-light text-xs mt-1.5">
-                          點擊抽卡
+                          點擊翻牌
                         </span>
                       )}
                     </div>
@@ -127,11 +143,11 @@ export default function FortunePage() {
               })}
             </div>
 
-            {flippedCards.filter(f => f).length < 4 && (
+            {!isShuffling && flippedCards.filter(f => f).length < 4 && (
               <div className="text-center text-ink-medium text-sm mt-6">
                 <p>
                   {currentStep < 4 
-                    ? `請點擊「${categoryNames[categories[currentStep]]}」卡牌`
+                    ? `請點擊「${categoryNames[categories[currentStep]]}」卡牌翻開`
                     : '所有卡牌已翻開，正在計算運勢...'}
                 </p>
               </div>
