@@ -1,6 +1,6 @@
 import { Situation, SituationId } from '@/types/situation';
 import { allCards } from './cards';
-import { CardWeight } from '@/types/card';
+import { CardWeight, Intensity } from '@/types/card';
 
 // 八種情境定義
 export const situations: Situation[] = [
@@ -210,166 +210,223 @@ export function getSituationById(id: SituationId): Situation | undefined {
   return situations.find(s => s.id === id);
 }
 
-// 計算卡牌與情境的相關度分數（改進版）
-export function calculateCardRelevance(card: CardWeight, situation: Situation): number {
-  let score = 0;
+// 方案一：屬性匹配 + 類別權重分配
+// 定義每個情境偏好的卡牌屬性範圍
+const situationPreferences: Record<SituationId, {
+  energyRange: [number, number];      // 能量範圍 [min, max]
+  impactRange: [number, number];     // 影響力範圍
+  directionPreference: number[];      // 方向偏好 [-1, 0, 1]
+  temporalPreference: number[];      // 時間偏好 [1, 2, 3]
+  intensityPreference: Intensity[];   // 強度偏好
+}> = {
+  work: {
+    energyRange: [5, 10],           // 工作需要較高能量
+    impactRange: [6, 10],           // 工作重視影響力
+    directionPreference: [1, 0],    // 偏好正面或中性
+    temporalPreference: [1, 2],     // 偏好短期或中期
+    intensityPreference: ['medium', 'high', 'extreme']
+  },
+  love: {
+    energyRange: [3, 8],            // 感情能量範圍較廣
+    impactRange: [4, 9],            // 影響力中等偏高
+    directionPreference: [1, 0, -1], // 接受各種方向
+    temporalPreference: [2, 3],      // 偏好中期或長期
+    intensityPreference: ['low', 'medium', 'high']
+  },
+  health: {
+    energyRange: [3, 7],            // 健康能量不宜過高
+    impactRange: [4, 8],            // 影響力中等
+    directionPreference: [1, 0],     // 偏好正面或中性
+    temporalPreference: [2, 3],      // 偏好長期
+    intensityPreference: ['low', 'medium']
+  },
+  growth: {
+    energyRange: [4, 9],            // 成長需要能量
+    impactRange: [5, 9],            // 影響力中高
+    directionPreference: [1, 0],     // 偏好正面
+    temporalPreference: [2, 3],      // 偏好長期
+    intensityPreference: ['medium', 'high']
+  },
+  finance: {
+    energyRange: [4, 8],            // 財務能量中等
+    impactRange: [5, 9],            // 影響力中高
+    directionPreference: [1, 0],     // 偏好正面或中性
+    temporalPreference: [1, 2],       // 偏好短期或中期
+    intensityPreference: ['medium', 'high']
+  },
+  social: {
+    energyRange: [3, 8],            // 人際能量範圍廣
+    impactRange: [4, 9],            // 影響力中等偏高
+    directionPreference: [1, 0, -1], // 接受各種方向
+    temporalPreference: [1, 2, 3],    // 接受各種時間
+    intensityPreference: ['low', 'medium', 'high']
+  },
+  creative: {
+    energyRange: [5, 10],           // 創意需要高能量
+    impactRange: [5, 10],           // 影響力中高
+    directionPreference: [1, 0],     // 偏好正面
+    temporalPreference: [1, 2],      // 偏好短期或中期
+    intensityPreference: ['medium', 'high', 'extreme']
+  },
+  decision: {
+    energyRange: [4, 9],            // 決策需要能量
+    impactRange: [6, 10],           // 決策重視影響力
+    directionPreference: [1, 0, -1], // 接受各種方向
+    temporalPreference: [1, 2],      // 偏好短期或中期
+    intensityPreference: ['high', 'extreme']
+  }
+};
+
+// 計算卡牌與情境的適合度（方案一）
+export function calculateCardFitness(card: CardWeight, situation: Situation): number {
+  const preference = situationPreferences[situation.id];
+  let fitness = 0;
   
-  // 1. 關鍵詞完全匹配（降低權重）
-  const keywordMatches = card.keywords.filter(k => 
-    situation.keywordMatches.some(sk => k.includes(sk) || sk.includes(k))
-  );
-  score += keywordMatches.length * 8; // 從 10 降到 8
-  
-  // 1.5. 部分關鍵詞匹配（新增：支持部分字匹配）
-  const partialMatches = card.keywords.filter(k => 
-    situation.keywordMatches.some(sk => {
-      // 檢查是否有部分字匹配（至少 2 個字相同）
-      const kChars = k.split('');
-      const skChars = sk.split('');
-      const commonChars = kChars.filter(c => skChars.includes(c));
-      return commonChars.length >= 2 && !keywordMatches.includes(k);
-    })
-  );
-  score += partialMatches.length * 3; // 部分匹配給較低分數
-  
-  // 2. 類別權重匹配（提高權重）
+  // 1. 類別權重（基礎分數）
   const categoryWeight = situation.categoryWeights[card.category];
-  score += categoryWeight * 30; // 從 20 提高到 30
+  fitness += categoryWeight * 30; // 類別權重佔 30 分
   
-  // 3. 能量值相關（某些情境更重視能量）
-  if (situation.id === 'health' || situation.id === 'creative') {
-    score += card.energy * 3; // 從 2 提高到 3
+  // 2. 能量匹配（0-15 分）
+  if (card.energy >= preference.energyRange[0] && card.energy <= preference.energyRange[1]) {
+    // 在範圍內，根據接近程度給分
+    const range = preference.energyRange[1] - preference.energyRange[0];
+    const center = (preference.energyRange[0] + preference.energyRange[1]) / 2;
+    const distance = Math.abs(card.energy - center);
+    fitness += 15 * (1 - distance / range); // 越接近中心分數越高
+  } else {
+    // 在範圍外，給較低分數
+    fitness += 5;
   }
   
-  // 4. 影響力相關（某些情境更重視影響）
-  if (situation.id === 'work' || situation.id === 'decision') {
-    score += card.impact * 3; // 從 2 提高到 3
+  // 3. 影響力匹配（0-15 分）
+  if (card.impact >= preference.impactRange[0] && card.impact <= preference.impactRange[1]) {
+    const range = preference.impactRange[1] - preference.impactRange[0];
+    const center = (preference.impactRange[0] + preference.impactRange[1]) / 2;
+    const distance = Math.abs(card.impact - center);
+    fitness += 15 * (1 - distance / range);
+  } else {
+    fitness += 5;
   }
   
-  // 5. 基礎分數（新增：確保每張卡牌都有基礎分數）
-  score += 5; // 基礎分數，讓所有卡牌都有機會
-  
-  // 6. 方向性加分（新增：正面卡牌在某些情境有加分）
-  if (situation.id === 'growth' || situation.id === 'creative' || situation.id === 'love') {
-    if (card.direction > 0) score += 5;
+  // 4. 方向匹配（0-10 分）
+  if (preference.directionPreference.includes(card.direction)) {
+    fitness += 10;
+  } else {
+    fitness += 3; // 不在偏好內，給較低分
   }
   
-  // 7. 時間性相關（新增：某些情境更重視短期/長期）
-  if (situation.id === 'work' || situation.id === 'decision') {
-    if (card.temporal === 1) score += 3; // 短期決策
-  }
-  if (situation.id === 'growth' || situation.id === 'health') {
-    if (card.temporal >= 2) score += 3; // 長期發展
-  }
-  
-  // 8. 強度等級相關（新增：極端卡牌在某些情境有加分）
-  if (situation.id === 'decision' || situation.id === 'work') {
-    if (card.intensity === 'extreme') score += 4;
+  // 5. 時間匹配（0-10 分）
+  if (preference.temporalPreference.includes(card.temporal)) {
+    fitness += 10;
+  } else {
+    fitness += 3;
   }
   
-  return score;
+  // 6. 強度匹配（0-10 分）
+  if (preference.intensityPreference.includes(card.intensity)) {
+    fitness += 10;
+  } else {
+    fitness += 3;
+  }
+  
+  // 7. 基礎分數（確保所有卡牌都有分數）
+  fitness += 10;
+  
+  return fitness;
 }
 
-// 情境化抽卡（根據情境權重和相關度）- 改進版
+// 情境化抽卡（方案一：屬性匹配 + 類別權重分配）
 export function drawSituationCards(situation: Situation, count: number = 3): CardWeight[] {
-  // 計算所有卡牌的相關度
-  const cardsWithRelevance = allCards.map(card => ({
+  // 計算所有卡牌的適合度
+  const cardsWithFitness = allCards.map(card => ({
     card,
-    relevance: calculateCardRelevance(card, situation),
+    fitness: calculateCardFitness(card, situation),
     categoryWeight: situation.categoryWeights[card.category]
   }));
   
-  // 排序：相關度高的優先，但也要考慮類別權重
-  cardsWithRelevance.sort((a, b) => {
-    const scoreA = a.relevance + a.categoryWeight * 50; // 從 100 降到 50，降低類別權重影響
-    const scoreB = b.relevance + b.categoryWeight * 50;
+  // 排序：適合度高的優先
+  cardsWithFitness.sort((a, b) => {
+    const scoreA = a.fitness + a.categoryWeight * 10; // 類別權重微調
+    const scoreB = b.fitness + b.categoryWeight * 10;
     return scoreB - scoreA;
   });
   
-  // 從高相關度卡牌中隨機選擇，但確保類別分布
+  // 確保至少 36 張卡牌可用（取前 36 張作為候選池）
+  const candidatePool = cardsWithFitness.slice(0, Math.max(36, cardsWithFitness.length));
+  
+  // 按類別分組，確保類別分布
+  const cardsByCategory: Record<CardWeight['category'], typeof cardsWithFitness> = {
+    天: [],
+    地: [],
+    人: [],
+    變數: []
+  };
+  
+  candidatePool.forEach(item => {
+    cardsByCategory[item.card.category].push(item);
+  });
+  
+  // 確保每個類別至少有足夠的卡牌
+  (['天', '地', '人', '變數'] as const).forEach(category => {
+    if (cardsByCategory[category].length < 3) {
+      // 如果某類別卡牌不足，從全部卡牌中補充
+      const allCategoryCards = cardsWithFitness.filter(item => item.card.category === category);
+      cardsByCategory[category] = allCategoryCards.slice(0, Math.max(3, allCategoryCards.length));
+    }
+  });
+  
   const selectedCards: CardWeight[] = [];
   const categoryCounts: { [key in CardWeight['category']]: number } = { 天: 0, 地: 0, 人: 0, 變數: 0 };
   
-  // 擴大候選池（從 30 增加到 50）
-  const topRelevant = cardsWithRelevance.slice(0, Math.min(50, cardsWithRelevance.length));
+  // 根據類別權重分配卡牌
+  const expectedCounts = {
+    天: Math.round(count * situation.categoryWeights.天),
+    地: Math.round(count * situation.categoryWeights.地),
+    人: Math.round(count * situation.categoryWeights.人),
+    變數: Math.round(count * situation.categoryWeights.變數)
+  };
   
-  // 分層選擇策略：高相關度、中相關度、低相關度各選一些
-  const highRelevant = topRelevant.slice(0, 15); // 前 15 張高相關度
-  const midRelevant = topRelevant.slice(15, 35);  // 中相關度
-  const lowRelevant = topRelevant.slice(35, 50); // 低相關度（但仍有一定相關性）
-  
-  // 確保至少有一張高相關度卡牌
-  if (highRelevant.length > 0) {
-    const firstCard = highRelevant[Math.floor(Math.random() * Math.min(8, highRelevant.length))];
-    selectedCards.push(firstCard.card);
-    categoryCounts[firstCard.card.category]++;
+  // 確保總數為 count
+  const total = Object.values(expectedCounts).reduce((sum, val) => sum + val, 0);
+  if (total !== count) {
+    const diff = count - total;
+    // 調整最大的類別
+    const maxCategory = Object.entries(expectedCounts)
+      .sort((a, b) => b[1] - a[1])[0][0] as CardWeight['category'];
+    expectedCounts[maxCategory] += diff;
   }
   
-  // 繼續選擇其他卡牌，考慮類別分布和多樣性
-  while (selectedCards.length < count) {
-    // 根據已選卡牌數量決定從哪個層級選擇
-    let candidatePool: typeof topRelevant;
-    if (selectedCards.length === 1) {
-      // 第二張：優先從高相關度或中相關度選擇
-      candidatePool = [...highRelevant, ...midRelevant].filter(
-        item => !selectedCards.includes(item.card)
-      );
-    } else {
-      // 第三張：可以從所有層級選擇，增加多樣性
-      candidatePool = topRelevant.filter(
-        item => !selectedCards.includes(item.card)
-      );
-    }
+  // 依序選擇各類別的卡牌
+  (['天', '地', '人', '變數'] as const).forEach(category => {
+    const targetCount = expectedCounts[category];
+    const pool = cardsByCategory[category];
     
-    if (candidatePool.length === 0) {
-      // 如果候選池空了，從所有卡牌中隨機選擇（確保類別分布）
-      const allRemaining = allCards.filter(card => !selectedCards.includes(card));
-      const categoryNeeded = Object.entries(situation.categoryWeights)
-        .sort((a, b) => {
-          const ratioA = categoryCounts[a[0] as CardWeight['category']] / selectedCards.length;
-          const ratioB = categoryCounts[b[0] as CardWeight['category']] / selectedCards.length;
-          const expectedA = a[1];
-          const expectedB = b[1];
-          return (expectedA - ratioA) - (expectedB - ratioB);
-        })[0][0] as CardWeight['category'];
+    // 從該類別中隨機選擇（加權隨機）
+    for (let i = 0; i < targetCount && pool.length > 0; i++) {
+      const totalFitness = pool.reduce((sum, item) => sum + item.fitness, 0);
+      let random = Math.random() * totalFitness;
       
-      const categoryCards = allRemaining.filter(c => c.category === categoryNeeded);
-      if (categoryCards.length > 0) {
-        const randomCard = categoryCards[Math.floor(Math.random() * categoryCards.length)];
-        selectedCards.push(randomCard);
-        categoryCounts[randomCard.category]++;
-        continue;
+      let selectedIndex = 0;
+      for (let j = 0; j < pool.length; j++) {
+        random -= pool[j].fitness;
+        if (random <= 0) {
+          selectedIndex = j;
+          break;
+        }
       }
+      
+      selectedCards.push(pool[selectedIndex].card);
+      pool.splice(selectedIndex, 1); // 移除已選卡牌
     }
+  });
+  
+  // 如果選不夠，從候選池中補足
+  while (selectedCards.length < count) {
+    const remaining = candidatePool.filter(item => !selectedCards.includes(item.card));
+    if (remaining.length === 0) break;
     
-    // 隨機選擇，但傾向選擇類別權重高的
-    const randomIndex = Math.floor(Math.random() * Math.min(15, candidatePool.length));
-    const selected = candidatePool[randomIndex];
-    
-    // 檢查類別分布是否合理
-    const categoryRatio = categoryCounts[selected.card.category] / selectedCards.length;
-    const expectedRatio = situation.categoryWeights[selected.card.category];
-    
-    // 如果類別分布還算合理，或者已經選了足夠的卡牌，就加入
-    if (categoryRatio < expectedRatio * 1.8 || selectedCards.length >= count - 1) {
-      selectedCards.push(selected.card);
-      categoryCounts[selected.card.category]++;
-    } else {
-      // 否則從其他類別中選擇
-      const otherCategory = candidatePool.find(
-        item => categoryCounts[item.card.category] / selectedCards.length < 
-                situation.categoryWeights[item.card.category] * 1.8
-      );
-      if (otherCategory) {
-        selectedCards.push(otherCategory.card);
-        categoryCounts[otherCategory.card.category]++;
-      } else {
-        // 如果找不到合適的，就隨機選擇（增加多樣性）
-        const randomCard = candidatePool[Math.floor(Math.random() * candidatePool.length)];
-        selectedCards.push(randomCard.card);
-        categoryCounts[randomCard.card.category]++;
-      }
-    }
+    const randomIndex = Math.floor(Math.random() * remaining.length);
+    selectedCards.push(remaining[randomIndex].card);
   }
   
   return selectedCards;

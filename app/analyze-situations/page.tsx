@@ -5,6 +5,17 @@ import { motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 
+interface CardFrequency {
+  cardId: string;
+  cardName: string;
+  category: string;
+  first: number;
+  second: number;
+  third: number;
+  total: number;
+  frequency: string;
+}
+
 interface AnalysisResult {
   id: string;
   name: string;
@@ -16,6 +27,18 @@ interface AnalysisResult {
   categoryDistribution: { 天: number; 地: number; 人: number; 變數: number };
   categoryMatchRate: { 天: number; 地: number; 人: number; 變數: number };
   categoryWeights: { 天: number; 地: number; 人: number; 變數: number };
+  simulation: {
+    count: number;
+    uniqueCardsDrawn: number;
+    uniqueCardsRate: string;
+    positionCategoryStats: {
+      first: { 天: string; 地: string; 人: string; 變數: string };
+      second: { 天: string; 地: string; 人: string; 變數: string };
+      third: { 天: string; 地: string; 人: string; 變數: string };
+    };
+    topCards: CardFrequency[];
+    cardFrequency: CardFrequency[];
+  };
   categoryWeightVsMatch: {
     天: { weight: string; matchRate: string; difference: string };
     地: { weight: string; matchRate: string; difference: string };
@@ -29,6 +52,7 @@ interface Summary {
   averageMatchRate: string;
   minMatched: number;
   maxMatched: number;
+  averageUniqueCardsDrawn: string;
   totalUniqueKeywords: number;
 }
 
@@ -97,6 +121,10 @@ export default function AnalyzeSituationsPage() {
             <div>
               <p className="text-ink-light text-sm">平均匹配率</p>
               <p className="text-2xl font-bold text-ink-dark">{data.summary.averageMatchRate}</p>
+            </div>
+            <div>
+              <p className="text-ink-light text-sm">平均實際抽到卡牌種類</p>
+              <p className="text-2xl font-bold text-ink-dark">{data.summary.averageUniqueCardsDrawn}</p>
             </div>
             <div>
               <p className="text-ink-light text-sm">最少匹配</p>
@@ -214,6 +242,95 @@ export default function AnalyzeSituationsPage() {
                   })}
                 </div>
               </div>
+
+              {/* 模擬抽卡統計 */}
+              {situation.simulation && (
+                <div className="mt-6 pt-4 border-t border-ink-light">
+                  <h4 className="font-semibold text-ink-dark mb-3">模擬抽卡統計（{situation.simulation.count} 次）</h4>
+                  
+                  {/* 實際抽到的卡牌種類 */}
+                  <div className="mb-4 p-3 bg-ink-light/5 rounded-card">
+                    <div className="flex justify-between items-center">
+                      <span className="text-ink-medium">實際抽到的卡牌種類：</span>
+                      <span className="font-bold text-ink-dark">
+                        {situation.simulation.uniqueCardsDrawn} / 72 ({situation.simulation.uniqueCardsRate})
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 第一、二、三張卡牌的類別分布 */}
+                  <div className="mb-4">
+                    <h5 className="text-sm font-semibold text-ink-dark mb-2">各位置類別分布</h5>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="bg-ink-light/5 p-3 rounded-card">
+                        <div className="font-semibold text-ink-dark mb-2">第一張卡牌</div>
+                        <div className="space-y-1 text-xs">
+                          {(['天', '地', '人', '變數'] as const).map(category => (
+                            <div key={category} className="flex justify-between">
+                              <span className="text-ink-medium">{category}：</span>
+                              <span className="font-semibold">{situation.simulation.positionCategoryStats.first[category]}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="bg-ink-light/5 p-3 rounded-card">
+                        <div className="font-semibold text-ink-dark mb-2">第二張卡牌</div>
+                        <div className="space-y-1 text-xs">
+                          {(['天', '地', '人', '變數'] as const).map(category => (
+                            <div key={category} className="flex justify-between">
+                              <span className="text-ink-medium">{category}：</span>
+                              <span className="font-semibold">{situation.simulation.positionCategoryStats.second[category]}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="bg-ink-light/5 p-3 rounded-card">
+                        <div className="font-semibold text-ink-dark mb-2">第三張卡牌</div>
+                        <div className="space-y-1 text-xs">
+                          {(['天', '地', '人', '變數'] as const).map(category => (
+                            <div key={category} className="flex justify-between">
+                              <span className="text-ink-medium">{category}：</span>
+                              <span className="font-semibold">{situation.simulation.positionCategoryStats.third[category]}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 最常出現的卡牌 */}
+                  <div>
+                    <h5 className="text-sm font-semibold text-ink-dark mb-2">最常出現的卡牌（Top 10）</h5>
+                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                      {situation.simulation.topCards.map((card, idx) => (
+                        <div key={card.cardId} className="bg-ink-light/5 p-2 rounded-card text-sm">
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-ink-light text-xs">#{idx + 1}</span>
+                              <span className="font-semibold text-ink-dark">{card.cardName}</span>
+                              <span className={`text-xs px-2 py-0.5 rounded-full text-white ${
+                                card.category === '天' ? 'bg-sky-start' :
+                                card.category === '地' ? 'bg-earth-start' :
+                                card.category === '人' ? 'bg-human-start' :
+                                'bg-variable-start'
+                              }`}>
+                                {card.category}
+                              </span>
+                            </div>
+                            <span className="text-ink-medium font-semibold">{card.frequency}</span>
+                          </div>
+                          <div className="flex gap-4 text-xs text-ink-light">
+                            <span>第一張: {card.first}</span>
+                            <span>第二張: {card.second}</span>
+                            <span>第三張: {card.third}</span>
+                            <span>總計: {card.total}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
             </motion.div>
           ))}
         </div>
