@@ -9,6 +9,7 @@ import { calculateFortune, generateFortuneText } from '@/lib/fortune';
 import { CardWeight, FortuneText } from '@/types/card';
 import { ArrowLeft } from 'lucide-react';
 import ShuffleAnimation from '@/components/ShuffleAnimation';
+import { saveLastMode, saveHistory, updateCardStats } from '@/lib/storage';
 
 const categories: CardWeight['category'][] = ['天', '地', '人', '變數'];
 const categoryNames = { 天: '天（節氣）', 地: '地（空間）', 人: '人（角色）', 變數: '變數（意外）' };
@@ -33,6 +34,8 @@ export default function FortunePage() {
     ];
     setCards(newCards);
     setIsShuffling(false);
+    // 記錄使用模式
+    saveLastMode('fortune');
   };
 
   // 點擊卡牌翻轉
@@ -63,6 +66,15 @@ export default function FortunePage() {
             calculation
           );
           setFortuneResult(text);
+          // 記錄歷史和統計
+          saveHistory({
+            id: Date.now().toString(),
+            mode: 'fortune',
+            cards: allCards.map(c => c.id),
+            timestamp: Date.now(),
+            result: { calculation, text }
+          });
+          updateCardStats(allCards.map(c => c.id));
           setPhase('result');
         }, 2000);
       }, 1000);

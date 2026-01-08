@@ -11,6 +11,7 @@ import { ArrowLeft } from 'lucide-react';
 import ParticleEffect from '@/components/ParticleEffect';
 import ShimmerEffect from '@/components/ShimmerEffect';
 import ShuffleAnimation from '@/components/ShuffleAnimation';
+import { saveLastMode, saveHistory, updateCardStats } from '@/lib/storage';
 
 export default function SingleCardPage() {
   const router = useRouter();
@@ -35,6 +36,8 @@ export default function SingleCardPage() {
       setPendingCard(null);
       setIsFlipped(false);
       setResult(null);
+      // 記錄使用模式
+      saveLastMode('single');
     }
     setIsShuffling(false);
   };
@@ -53,7 +56,17 @@ export default function SingleCardPage() {
     if (!isFlipped && card) {
       setIsFlipped(true);
       setTimeout(() => {
-        setResult(interpretSingleCard(card));
+        const result = interpretSingleCard(card);
+        setResult(result);
+        // 記錄歷史和統計
+        saveHistory({
+          id: Date.now().toString(),
+          mode: 'single',
+          cards: [card.id],
+          timestamp: Date.now(),
+          result
+        });
+        updateCardStats([card.id]);
       }, 800);
     }
   };
