@@ -96,8 +96,20 @@ export default function SingleCardPage() {
       <div className="max-w-4xl mx-auto relative z-10">
         {!isShuffling && card && (
           <div className="space-y-12">
+            <div className="text-center mb-8">
+              <h1 className="text-4xl font-bold text-ink-dark mb-4">單卡抽籤</h1>
+              <p className="text-ink-medium mb-2 text-base md:text-lg">
+                從四類中隨機抽取一張卡牌，獲得即時的心理認知與日常指引
+              </p>
+              {!isFlipped && (
+                <p className="text-ink-light text-sm">
+                  點擊卡牌翻開查看結果
+                </p>
+              )}
+            </div>
+
             <div className="flex justify-center">
-              <div className="w-[353px] md:w-[441px]" style={{ aspectRatio: '3/5.5' }}>
+              <div className="w-[240px] md:w-[280px]" style={{ aspectRatio: '3/5.5' }}>
                 <Card
                   card={card}
                   isFlipped={isFlipped}
@@ -106,15 +118,6 @@ export default function SingleCardPage() {
                 />
               </div>
             </div>
-
-            {/* 點擊翻牌提示 */}
-            {!isFlipped && (
-              <div className="text-center mt-6">
-                <p className="text-ink-medium text-sm animate-pulse">
-                  點擊卡牌翻開
-                </p>
-              </div>
-            )}
 
             {/* 解讀區塊在下方 */}
             {result && (
